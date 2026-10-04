@@ -1,4 +1,4 @@
-# OHM
+# BLASTEROID MEGASYNTH
 
 **Experimental industrial ambient on an ESP32-S3.** A slow machine drone you build from layers, two robot mouths
 (**SAM**, the 1982 Software Automatic Mouth, and the **Talkie** Speak & Spell LPC voice) that can freeze into drones,
@@ -6,8 +6,9 @@ get scratched on a knob and talk to each other, a box of industrial noises, and 
 4x4 keypad, one rotary pot, a 128x128 OLED and a small speaker.
 
 At boot it plays a generative splash that's different every time: two random geometry scenes (string-art mandala,
-polygon rings, flow-field particles, a rotating tunnel, a 3D Lissajous knot), glitch cuts, then everything converges
-into a chrome **Ω** while SAM intones "OHM" and Talkie answers "OHMS".
+polygon rings, flow-field particles, a rotating tunnel, a 3D Lissajous knot), glitch cuts. Then everything converges
+into **the Blasteroid**: a cyborg cyclops in wraparound shades. His eye charges up, two lasers burn
+**BLASTEROID / MEGASYNTH** in from opposite ends, SAM says the name, and Talkie answers "OPERATIONAL".
 
 ![splash storyboard](docs/splash_preview.png)
 
@@ -20,12 +21,12 @@ pads, so there's no SMD soldering.
 
 | Folder | Contents |
 |---|---|
-| `firmware/ohm/` | The OHM sketch (Arduino), with SAM's C core and the Talkie vocabularies bundled alongside |
+| `firmware/blasteroid_megasynth/` | The Blasteroid Megasynth sketch (Arduino), with SAM's C core and the Talkie vocabularies bundled alongside |
 | `firmware/keypad_bringup/` | Bring-up test: I2C scan, every key plays a note, pot = volume. Flash this first |
 | `firmware/short_finder/` | Finds pins shorted to GND or to each other on a freshly milled board (pull-ups only, safe) |
 | `hardware/kicad/` | KiCad project for the board (rev B: pot standing under the OLED), custom symbols + footprints |
 | `hardware/cnc/` | Gerbers + drills, G-code for a Genmitsu Cubiko (GRBL), FlatCAM script, 1:1 fit-test print, cheat sheet |
-| `tools/` | `splash_preview.py`: a Python mirror of the boot splash that renders storyboards (needs numpy + Pillow) |
+| `tools/` | `splash_preview.py`: a Python mirror of the boot splash that renders storyboards (`python splash_preview.py <seed> <seconds...>`, needs numpy + Pillow) |
 
 ## Parts
 
@@ -54,11 +55,11 @@ The amp uses the TX/RX pins, so **USB CDC On Boot must be Enabled** (serial goes
 1. Arduino IDE (or arduino-cli) with the **ESP32 core 3.x** and the **U8g2** library.
 2. Board settings: **ESP32S3 Dev Module**, **USB CDC On Boot: Enabled**, **PSRAM: enabled**.
    arduino-cli FQBN: `esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=enabled`
-3. Flash `keypad_bringup` first to check the keys, pot, OLED and speaker, then `ohm`.
+3. Flash `keypad_bringup` first to check the keys, pot, OLED and speaker, then `blasteroid_megasynth`.
 
 ```
-arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=enabled firmware/ohm
-arduino-cli upload  --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=enabled -p COMx firmware/ohm
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=enabled firmware/blasteroid_megasynth
+arduino-cli upload  --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,PSRAM=enabled -p COMx firmware/blasteroid_megasynth
 ```
 
 Tips:

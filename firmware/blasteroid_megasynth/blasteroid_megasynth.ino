@@ -1,5 +1,5 @@
 /*
-  OHM - experimental industrial ambient for keypad_synth (revA / revB)
+  BLASTEROID MEGASYNTH - experimental industrial ambient for keypad_synth (revA / revB)
   ===========================================================================================================
   A slow machine drone you play with layers, two robot mouths (SAM and the Talkie LPC voice) that can freeze into
   drones, scratch on the knob and talk to each other, a box of industrial noises, and a big reverb "space".
@@ -101,10 +101,11 @@ const Voice VOICES[] = {
   {"ROBOT", 92, 60, 190, 190}, {"SAM", 72, 64, 128, 128}, {"GHOST", 110, 50, 170, 90}, {"DEEP", 96, 118, 120, 150},
 };
 #define NVOICES 4
-// slow, cold, wide (OHM is first: it's the boot drone; the last one is the long line)
-Word bank[12] = {
+// slow, cold, wide (the last pad word is the long line; bank[12] is the hidden name, said at boot)
+Word bank[13] = {
   {"OHM"}, {"SILENCE"}, {"SIGNAL"}, {"MACHINE"}, {"BREATHE"}, {"ECHO"},
   {"VOID"}, {"DRIFT"}, {"STATIC"}, {"RESONANCE"}, {"FREQUENCY"}, {"WE ARE LISTENING"},
+  {"BLASTEROID MEGA SYNTH"},
 };
 
 #define NBANKS 4
@@ -180,6 +181,7 @@ SamData* samdata;
 int8_t* pool = nullptr;
 uint32_t poolSize = 0, poolPos = 0;
 volatile bool bankBusy = true;
+volatile bool nameReady = false;                    // bank[12] (the name) renders first
 volatile int voiceIdx = 0;
 int renderProgress = 0;
 
@@ -202,11 +204,12 @@ bool sayToPool(const char* text, const Voice& v) {
 }
 
 void renderBank(int vi, bool draw) {
-  bankBusy = true;
+  bankBusy = true; nameReady = false;
   delay(30);
   poolPos = 0;
-  for (int i = 0; i < 12; i++) {
-    renderProgress = i;
+  for (int step = 0; step < 13; step++) {
+    int i = step == 0 ? 12 : step - 1;               // the name first, then the 12 pad words
+    renderProgress = step * 12 / 13;
     if (draw) drawFrame();
     uint32_t start = poolPos;
     bank[i].off = start; bank[i].len = 0;
@@ -216,6 +219,7 @@ void renderBank(int vi, bool draw) {
     while (a < b && abs(pool[a]) < 4) a++;
     while (b > a && abs(pool[b - 1]) < 4) b--;
     bank[i].off = a; bank[i].len = b > a + 8 ? b - a : 0;
+    if (i == 12) nameReady = true;
   }
   renderProgress = 12;
   logf("SAM voice %s: %u bytes\n", VOICES[vi].name, poolPos);
@@ -977,16 +981,18 @@ void audioTask(void*) {
   int grainTimer = 0, lastBeat = -1;
   for (;;) {
     inputTick();
-    if (bootVoiceReq && !bankBusy) { bootVoiceReq = false; deckFreeze(0, bank[0].len * 0.45f); freezeHeld = false; }
+    if (bootVoiceReq && nameReady && bank[12].len) {   // SAM says the name
+      bootVoiceReq = false; deck.word = 12; deck.pos = 0; deck.rev = false; deck.freeze = false; deck.scratch = false; deck.on = true;
+    }
     if (bootFreezeStopReq) { bootFreezeStopReq = false; if (!freezeHeld && deck.freeze) { deck.freeze = false; deck.on = false; } }
-    if (bootTalkReq) { bootTalkReq = false; lpc.bank = 3; lpc.word = 8; lpc.rev = false; lpc.scratch = false; lpc.fpos = 0; lpc.loaded = -1; lpc.on = talk[3][8].n > 0; }
+    if (bootTalkReq) { bootTalkReq = false; lpc.bank = 3; lpc.word = 10; lpc.rev = false; lpc.scratch = false; lpc.fpos = 0; lpc.loaded = -1; lpc.on = talk[3][10].n > 0; }   // Talkie: "OPERATIONAL"
     tapeRate += ((tapeOn ? 0.0f : 1.0f) - tapeRate) * (tapeOn ? 0.03f : 0.08f);
     under += ((underOn ? 1.0f : 0.0f) - under) * 0.05f;
     masterFade = min(1.0f, masterFade + BLOCK * INV_FS / 4.0f);
     float stepLen = FS * 60.0f / bpm / 4.0f;
     float master = VOLS[volIdx] * masterFade;
     bool busy = bankBusy;
-    if (busy) { deck.on = false; for (auto& g : grains) g.on = false; }
+    if (busy && !(deck.word == 12 && nameReady)) { deck.on = false; for (auto& g : grains) g.on = false; }
     if (!stutterOn) { stutterBase = -1; lpcStutter = -1; }
     float pitchK = fx == FX_CLEAN ? 0.5f + fxAmt[FX_CLEAN] : fx == FX_DEEP ? 0.75f - 0.4f * fxAmt[FX_DEEP] : 1.0f;
     float lpcInc = 8000.0f * lpFormant * tapeRate * INV_FS * (fx == FX_DEEP ? pitchK : 1.0f);
@@ -1269,15 +1275,13 @@ void chordName(char* out, size_t n) {
 }
 
 void drawTopBar() {
-  int w = tab(0, 0, "OHM");
+  int w = tab(0, 0, "BLASTEROID");
   oled.setFont(u8g2_font_4x6_tf);
   char t[12]; snprintf(t, sizeof t, "%d", bpm);
   oled.drawStr(w + 3, 6, t);
   int bx = w + 5 + oled.getStrWidth(t);
   int beat = curStep / 4;
   for (int i = 0; i < 4; i++) { if (playing && i == beat) oled.drawBox(bx + i * 5, 1, 4, 4); else oled.drawFrame(bx + i * 5, 1, 4, 4); }
-  char sp[12]; snprintf(sp, sizeof sp, "SP%d", (int)(space * 99));
-  oled.drawStr(bx + 24, 6, sp);
   const char* mn = MODE_NAMES[mode];
   int mw = oled.getStrWidth(mn) + 4;
   oled.drawFrame(128 - mw, 0, mw, 7);
@@ -1486,7 +1490,8 @@ void drawAlert(const char* m) {
 }
 // ---- boot splash: generative geometry, different every boot. Two random scenes (times-table mandala, polygon
 // rings, flow-field particles, a rotating tunnel, a 3D Lissajous knot; particles about half the time), glitch cuts,
-// then the particles converge into a chrome Omega: OHM. SAM intones "OHM" (frozen into a drone), Talkie says "OHMS".
+// then the particles converge into the BLASTEROID: a cyborg cyclops in wraparound shades. His eye charges and two
+// lasers burn BLASTEROID / MEGASYNTH in from opposite ends while SAM says the name; Talkie answers "OPERATIONAL".
 // Painted in grey with persistence (trails), then Bayer-dithered with film grain. splash_preview.py mirrors this.
 volatile bool splashOn = true;
 uint32_t splashT0 = 0, splashEnd = 0, splashLast = 0;
@@ -1621,9 +1626,15 @@ void ditherOut(uint32_t t) {
 enum { SC_TIMES, SC_RINGS, SC_PART, SC_TUNNEL, SC_LISSA };
 struct Film {
   int scenes[2]; float k0, kv; int sides[5]; float rsp[5]; int la, lb, lc;
-  float P[150][2]; float t; float om[150][2];
+  float P[150][2]; float t; float face[150][2];
 } film;
-const float OX = 64, OY = 50, OR = 26;
+// the cyclops (head coordinates; drawn 1.2x around (64, 27) -> screen y 30)
+const float HEAD[24] = {44, 11, 52, 5, 76, 5, 84, 11, 87, 22, 86, 36, 80, 46, 72, 51, 56, 51, 48, 46, 42, 36, 41, 22};
+const float SHADES[20] = {35, 22, 46, 18.5f, 64, 17.5f, 82, 18.5f, 93, 22, 91, 30, 80, 33.5f, 64, 32, 48, 33.5f, 37, 30};
+const float EYE_X = 64, EYE_Y = 25.5f, HS = 1.2f, HCY = 27, HSY = 30;
+const int L1_BASE = 82, L2_BASE = 102;              // text baselines; the lasers hit the middle of the letters
+static inline float headSX(float x) { return 64 + (x - 64) * HS; }
+static inline float headSY(float y) { return HSY + (y - HCY) * HS; }
 
 void filmInit() {
   static bool nzInit = false;
@@ -1640,13 +1651,18 @@ void filmInit() {
   film.la = LA[r.range(0, 3)]; film.lb = LB[r.range(0, 4)]; film.lc = LC[r.range(0, 3)];
   for (auto& p : film.P) { p[0] = r.uni(0, 128); p[1] = r.uni(0, 128); }
   film.t = 0;
-  // target points along the Omega: the arc, then the two feet
-  const float fx = OR * cosf(50 * PI / 180), fy = OY + OR * sinf(50 * PI / 180);
-  int arc = 108, rest = 150 - arc, half = rest / 2;
-  for (int i = 0; i < arc; i++) { float th = (-50 + 280.0f * i / (arc - 1)) * PI / 180; film.om[i][0] = OX + OR * cosf(th); film.om[i][1] = OY - OR * sinf(th); }
-  for (int i = 0; i < rest; i++) {
-    bool left = i < half; float u = left ? i / (float)max(1, half - 1) : (i - half) / (float)max(1, rest - half - 1);
-    film.om[arc + i][0] = left ? OX - fx - 14 * u : OX + fx + 14 * u; film.om[arc + i][1] = fy;
+  // target points along the head outline (60 %) and the shades (40 %)
+  int k = 0;
+  for (int pass = 0; pass < 2; pass++) {
+    const float* P = pass ? SHADES : HEAD; int n = pass ? 10 : 12, m = pass ? 150 - 90 : 90;
+    float L[12], tot = 0;
+    for (int e = 0; e < n; e++) { int q = (e + 1) % n; L[e] = sqrtf(sq(P[2 * q] - P[2 * e]) + sq(P[2 * q + 1] - P[2 * e + 1])); tot += L[e]; }
+    for (int c = 0; c < m && k < 150; c++) {
+      float d = tot * c / m; int e = 0;
+      while (e < n - 1 && d > L[e]) { d -= L[e]; e++; }
+      int q = (e + 1) % n; float u = d / L[e];
+      film.face[k][0] = headSX(P[2 * e] + (P[2 * q] - P[2 * e]) * u); film.face[k][1] = headSY(P[2 * e + 1] + (P[2 * q + 1] - P[2 * e + 1]) * u); k++;
+    }
   }
   memset(gbuf, 0, sizeof gbuf);
 }
@@ -1705,21 +1721,38 @@ void sceneLissa(float t, float fade) {
   }
 }
 
-void drawOmega(float fade, bool outline) {
-  float P[29][2], th[29];
-  for (int i = 0; i < 29; i++) { th[i] = (-50 + 280.0f * i / 28) * PI / 180; P[i][0] = OX + OR * cosf(th[i]); P[i][1] = OY - OR * sinf(th[i]); }
-  const float fx = OR * cosf(50 * PI / 180), fy = OY + OR * sinf(50 * PI / 180);
-  if (outline) {
-    paint(0);
-    for (int i = 0; i < 28; i++) cLine(P[i][0], P[i][1], P[i + 1][0], P[i + 1][1], 9);
-    cLine(OX - fx, fy, OX - fx - 15, fy, 8); cLine(OX + fx, fy, OX + fx + 15, fy, 8);
+void drawHead(float fade, float eye, float t) {
+  float cs = camS, cx = camX, cy = camY;
+  camS = HS; camX = 64; camY = HCY + (64 - HSY) / HS;
+  float tmp[24];
+  // shoulders / collar: dark, rim-lit
+  static const float SH0[8] = {46, 49, 82, 49, 100, 58, 28, 58}, SH1[8] = {48, 50, 80, 50, 97, 57.5f, 31, 57.5f};
+  paint(0); cPoly(SH0, 4);
+  paint(0.3f * fade); cPoly(SH1, 4);
+  paint(0.9f * fade); cLine(80, 50, 97, 57.5f, 0.7f); cLine(31, 57.5f, 48, 50, 0.5f);
+  // head: bold and bright, a shadow side
+  for (int i = 0; i < 12; i++) { tmp[2 * i] = HEAD[2 * i] + (HEAD[2 * i] - 64) * 0.07f; tmp[2 * i + 1] = HEAD[2 * i + 1] + (HEAD[2 * i + 1] - 28) * 0.07f; }
+  paint(0); cPoly(tmp, 12);
+  paint(0.95f * fade); cPoly(HEAD, 12);
+  static const float SHADOW[12] = {42, 36, 41, 22, 46.5f, 22, 48, 37, 52, 48, 48, 46};
+  paint(0.55f * fade); cPoly(SHADOW, 6);
+  paint(0); cLine(52, 10.5f, 76, 10.5f, 0.5f);                                // forehead seam
+  cLine(64.5f, 33.5f, 62, 38.8f, 0.7f); cLine(62, 38.8f, 65.5f, 39.2f, 0.7f); // nose
+  cLine(56, 43, 72, 43, 1.6f); cLine(56, 43, 54, 44.8f, 1.2f); cLine(72, 43, 74, 44.8f, 1.2f);   // grim mouth
+  cLine(61, 48.6f, 67, 48.6f, 0.7f);                                          // chin
+  // wraparound shades: solid black, hard white rim, one reflection line, a glint
+  for (int i = 0; i < 10; i++) { tmp[2 * i] = SHADES[2 * i] + (SHADES[2 * i] - 64) * 0.05f; tmp[2 * i + 1] = SHADES[2 * i + 1] + (SHADES[2 * i + 1] > 25 ? 1.4f : -1.4f); }
+  paint(0); cPoly(tmp, 10);
+  paint(0.85f * fade);
+  for (int i = 0; i < 10; i++) { int q = (i + 1) % 10; cLine(tmp[2 * i], tmp[2 * i + 1], tmp[2 * q], tmp[2 * q + 1], 0.55f); }
+  paint(fade); cLine(38, 28.5f, 90, 28.5f, 0.6f);
+  float g = fmodf(t * 0.6f, 1.6f);
+  if (g < 1) { paint(1); cLine(40 + g * 46, 19.5f, 37 + g * 46, 30, 0.9f); }
+  if (eye > 0) {                                     // the single eye blazing through the lens
+    paint(0.3f + 0.35f * eye); cDisc(EYE_X, EYE_Y, 2 + 3.5f * eye);
+    paint(1); cDisc(EYE_X, EYE_Y, 0.8f + 1.4f * eye);
   }
-  fxFade = fade;
-  chrome(OY - OR - 3, 2 * OR + 8);
-  for (int i = 0; i < 28; i++) cLine(P[i][0], P[i][1], P[i + 1][0], P[i + 1][1], 4.6f + 2.0f * fabsf(cosf(th[i])));   // thick at the sides
-  chrome(fy - 6, 12);
-  cLine(OX - fx, fy, OX - fx - 14, fy, 5); cLine(OX + fx, fy, OX + fx + 14, fy, 5);
-  fxFade = 1;
+  camS = cs; camX = cx; camY = cy;
 }
 
 void glitch(Rng& r) {                                // horizontal tearing bands
@@ -1736,9 +1769,10 @@ void glitch(Rng& r) {                                // horizontal tearing bands
 }
 
 extern volatile bool bootVoiceReq, bootTalkReq;
+float laserX1 = 999, laserX2 = -999;               // how far the lasers have burned each line
 void drawSplash() {
   uint32_t now = millis();
-  if (!splashT0) { splashT0 = now; splashLast = now; splashEnd = now + 12000; splashStopped = false; filmInit(); }
+  if (!splashT0) { splashT0 = now; splashLast = now; splashEnd = now + 13500; filmInit(); }
   float dt = min(0.1f, (now - splashLast) * 0.001f);
   splashLast = now;
   film.t += dt;
@@ -1746,7 +1780,7 @@ void drawSplash() {
   static Rng gr(5);
   camS = 1; camX = 64; camY = 64; shakeX = shakeY = 0; fxLift = 0; fxFade = 1;
   int sc = u < 3 ? film.scenes[0] : film.scenes[1];
-  float decay = u < 6 ? (sc == SC_PART ? 0.86f : 0.55f) : u < 7.4f ? 0.8f : 0.6f;
+  float decay = u < 6 ? (sc == SC_PART ? 0.86f : 0.55f) : u < 7.2f ? 0.8f : 0.55f;
   int dk = (int)(decay * 256);
   for (auto& v : gbuf) v = (uint8_t)((v * dk) >> 8);
 
@@ -1760,45 +1794,68 @@ void drawSplash() {
       default: sceneLissa(lt, fade); break;
     }
     if (u > 2.85f && u < 3.15f) glitch(gr);
-  } else if (u < 7.4f) {                             // everything flies into the Omega
-    float k = (u - 6) / 1.4f, e = 1 - powf(1 - min(1.0f, k), 3);
-    if (k > 0.7f) drawOmega((k - 0.7f) / 0.3f * 0.6f, false);
+  } else if (u < 7.2f) {                             // everything flies into the cyclops
+    float k = (u - 6) / 1.2f, e = 1 - powf(1 - min(1.0f, k), 3);
+    if (k > 0.6f) drawHead((k - 0.6f) / 0.4f * 0.7f, 0, u);
     paint(1);
-    for (int i = 0; i < 150; i++) cDisc(film.P[i][0] + (film.om[i][0] - film.P[i][0]) * e, film.P[i][1] + (film.om[i][1] - film.P[i][1]) * e, 0.7f);
-  } else {                                           // the logo breathes
-    float k = u - 7.4f, pulse = 0.5f + 0.5f * sinf(k * 2.2f), g0 = 0.14f + 0.08f * pulse;
-    for (int y = 0; y < 128; y++) for (int x = 0; x < 128; x++) {
-      float dx = x - 64, dy = y - 54, d = sqrtf(dx * dx + dy * dy);
-      uint8_t v = g8(g0 * max(0.0f, 1 - d / 52));
-      if (v > gbuf[y * 128 + x]) gbuf[y * 128 + x] = v;
+    for (int i = 0; i < 150; i++) cDisc(film.P[i][0] + (film.face[i][0] - film.P[i][0]) * e, film.P[i][1] + (film.face[i][1] - film.P[i][1]) * e, 0.7f);
+  } else {                                           // eye charges, lasers burn the name in
+    float k = u - 7.2f;
+    float eye = k < 2.4f ? min(1.0f, k / 0.6f) : 0.55f + 0.25f * sinf(k * 5);
+    if (k > 0.5f && k < 0.7f) shakeX = gr.range(-2, 3);
+    drawHead(min(1.0f, 0.7f + k), eye, u);
+    laserX1 = 999; laserX2 = -999;
+    if (k > 0.6f && k < 2.4f) {
+      float q = (k - 0.6f) / 1.8f, ex = headSX(EYE_X), ey = headSY(EYE_Y);
+      laserX1 = 8 + q * 112; laserX2 = 120 - q * 112;
+      float hit[2][2] = {{laserX1, L1_BASE - 6.0f}, {laserX2, L2_BASE - 6.0f}};
+      for (auto& h : hit) {
+        paint(0.55f); cLine(ex, ey, h[0], h[1], 3.2f);
+        paint(1); cLine(ex, ey, h[0], h[1], 1.3f);
+        paint(0.6f); cDisc(h[0], h[1], 4); paint(1); cDisc(h[0], h[1], 1.6f);
+        paint(0.9f);
+        for (int j = 0; j < 6; j++) { float a = gr.uni(0, 2 * PI), rr = gr.uni(2, 9); cDisc(h[0] + cosf(a) * rr, h[1] + sinf(a) * rr * 0.6f, 0.5f); }
+      }
     }
-    drawOmega(min(1.0f, 0.6f + k * 0.8f), true);
-    paint(0.7f);
-    for (int i = 0; i < 40; i++) {                   // motes orbiting the symbol
-      float a = k * 0.4f + i * 0.157f, rr = 38 + 6 * sinf(i * 1.7f + k);
-      cDisc(64 + rr * cosf(a), 52 + rr * 0.8f * sinf(a), 0.5f);
+    for (int line = 0; line < 2; line++) {           // scorch glow behind the burned letters
+      int c = (line ? L2_BASE : L1_BASE) - 6;
+      for (int y = max(0, c - 12); y < min(128, c + 13); y++) {
+        uint8_t v = g8(0.16f * expf(-sq((y - c) / 7.0f)));
+        for (int x = 0; x < 128; x++) {
+          bool lit = line ? x > laserX2 : x < laserX1;
+          if (lit && v > gbuf[y * 128 + x]) gbuf[y * 128 + x] = v;
+        }
+      }
     }
-    if ((k > 1.5f && k < 1.6f) || (k > 3.2f && k < 3.25f)) glitch(gr);
   }
-  if (u >= 7.4f && !splashVoice) { splashVoice = true; bootVoiceReq = true; }   // SAM: "OHM", frozen into a drone
-  if (u >= 9.0f && !splashTalk) { splashTalk = true; bootTalkReq = true; }      // Talkie: "OHMS"
-  if (u >= 10.6f && !splashStopped) { splashStopped = true; bootFreezeStopReq = true; }
+  if (u >= 7.9f && !splashVoice) { splashVoice = true; bootVoiceReq = true; }   // SAM: "BLASTEROID MEGASYNTH"
+  if (u >= 10.4f && !splashTalk) { splashTalk = true; bootTalkReq = true; }     // Talkie: "OPERATIONAL"
+  splashStopped = true;
   ditherOut(now);
 
-  if (u > 8.0f) {
-    oled.setFont(u8g2_font_7x14B_tr);
-    const char* ttl = "O H M";
-    int w = oled.getStrWidth(ttl);
-    oled.setDrawColor(0); oled.drawBox(64 - w / 2 - 3, 91, w + 6, 16); oled.setDrawColor(1);
-    oled.drawStr(64 - w / 2, 104, ttl);
+  if (u > 7.8f) {                                    // the name, burned in up to where the lasers are
+    oled.setFont(u8g2_font_helvB12_tr);
+    const char* L[2] = {"BLASTEROID", "MEGASYNTH"};
+    const int B[2] = {L1_BASE, L2_BASE};
+    for (int line = 0; line < 2; line++) {
+      int w = oled.getStrWidth(L[line]), x0 = 64 - w / 2;
+      oled.setDrawColor(0);
+      for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) if (dx || dy) oled.drawStr(x0 + dx, B[line] + dy, L[line]);
+      oled.setDrawColor(1);
+      oled.drawStr(x0, B[line], L[line]);
+      oled.setDrawColor(0);                          // not burned yet: hide it
+      if (line == 0 && laserX1 < 128) oled.drawBox(max(0, (int)laserX1), B[0] - 14, 128 - max(0, (int)laserX1), 17);
+      if (line == 1 && laserX2 > 0) oled.drawBox(0, B[1] - 14, min(128, (int)laserX2 + 1), 17);
+      oled.setDrawColor(1);
+    }
     oled.setFont(u8g2_font_4x6_tf);
-    if (showCredit) {
+    if (showCredit && u > 9.8f) {
       const char* cr = "MARK HELLAR + CLAUDE";
       int cw = oled.getStrWidth(cr);
-      oled.setDrawColor(0); oled.drawBox(64 - cw / 2 - 2, 109, cw + 4, 8); oled.setDrawColor(1);
-      oled.drawStr(64 - cw / 2, 115, cr);
+      oled.setDrawColor(0); oled.drawBox(64 - cw / 2 - 2, 106, cw + 4, 8); oled.setDrawColor(1);
+      oled.drawStr(64 - cw / 2, 112, cr);
     }
-    if (u > 9.5f && ((now / 500) & 1)) {
+    if (u > 10.8f && ((now / 500) & 1)) {
       const char* pr = "PRESS ANY KEY";
       int pw = oled.getStrWidth(pr);
       oled.setDrawColor(0); oled.drawBox(64 - pw / 2 - 2, 119, pw + 4, 8); oled.setDrawColor(1);
@@ -1821,12 +1878,11 @@ void drawFrame() {
     if (!keysVis) splashKeysClear = true;
     if (splashEnd && (millis() > splashEnd || (keysVis && splashKeysClear))) {
       splashOn = false;
-      if (splashVoice && !splashStopped) { splashStopped = true; bootFreezeStopReq = true; }   // skipped: stop the OHM drone
     }
     else { drawSplash(); oled.sendBuffer(); return; }
   }
   if (bankBusy) {
-    tab(0, 0, "OHM");
+    tab(0, 0, "BLASTEROID MEGASYNTH");
     oled.setFont(u8g2_font_4x6_tf);
     oled.drawStr(0, 30, "> TUNING THE MOUTHS");
     char v[24]; snprintf(v, sizeof v, "> VOICE %s", VOICES[voiceIdx].name);

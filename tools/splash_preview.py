@@ -1,146 +1,133 @@
-# Python mirror of OHM's boot splash: generative geometry (two random scenes, sometimes particles), glitch cuts,
-# particles converge into an Omega, logo. Uses film3's grey rasterizer + dither.
+# Python mirror of the BLASTEROID MEGASYNTH boot splash: generative geometry (from film5), particles converge into a
+# cyborg cyclops head with wraparound shades, the eye charges, two lasers burn the name in.
 import math, random, sys
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import splash_raster as R
-from splash_raster import paint, cLine, cDisc, cPoly, cTri
+from splash_raster import paint, cLine, cDisc, cPoly, cTri, cBox
+import splash_scenes as F
 
 W = 128
-SC_TIMES, SC_RINGS, SC_PART, SC_TUNNEL, SC_LISSA = range(5)
+HEAD = [(44, 11), (52, 5), (76, 5), (84, 11), (87, 22), (86, 36), (80, 46), (72, 51), (56, 51), (48, 46), (42, 36), (41, 22)]
+SHADES = [(35, 22), (46, 18.5), (64, 17.5), (82, 18.5), (93, 22), (91, 30), (80, 33.5), (64, 32), (48, 33.5), (37, 30)]
+EYE = (64, 25.5)
+L1Y, L2Y = 70, 90                                    # text rows (top of the letters)
 
-class Film:
+def outlinePoints(n):
+    pts = []
+    for poly, share in ((HEAD, 0.6), (SHADES, 0.4)):
+        m = int(n * share); per = []
+        L = [math.hypot(poly[(i + 1) % len(poly)][0] - poly[i][0], poly[(i + 1) % len(poly)][1] - poly[i][1]) for i in range(len(poly))]
+        tot = sum(L)
+        for k in range(m):
+            d = tot * k / m; i = 0
+            while d > L[i]: d -= L[i]; i += 1
+            a, b = poly[i], poly[(i + 1) % len(poly)]; u = d / L[i]
+            per.append((a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u))
+        pts += per
+    while len(pts) < n: pts.append(EYE)
+    return [scr(x, y) for x, y in pts]
+
+HS, HCY, HSY = 1.2, 27, 30                            # the head is drawn 1.2x around (64, 27) -> screen y 30
+def scr(x, y): return (64 + (x - 64) * HS, HSY + (y - HCY) * HS)
+EYE_S = scr(*EYE)
+
+def drawHead(fade, eye, t):
+    R.cam.update(s=HS, x=64.0, y=HCY + (64 - HSY) / HS)
+    # shoulders / collar: dark, rim-lit
+    paint(0.0); cPoly([(46, 49), (82, 49), (100, 58), (28, 58)])
+    paint(0.3 * fade); cPoly([(48, 50), (80, 50), (97, 57.5), (31, 57.5)])
+    paint(0.9 * fade); cLine(80, 50, 97, 57.5, 0.7); cLine(31, 57.5, 48, 50, 0.5)
+    # head: bold, bright, graphic
+    paint(0.0); cPoly([(x + (x - 64) * 0.07, y + (y - 28) * 0.07) for x, y in HEAD])
+    paint(0.95 * fade); cPoly(HEAD)
+    paint(0.55 * fade); cPoly([(42, 36), (41, 22), (46.5, 22), (48, 37), (52, 48), (48, 46)])   # shadow side
+    # forehead seam + rivets
+    paint(0.0); cLine(52, 10.5, 76, 10.5, 0.5)
+    # nose, grim mouth, chin
+    paint(0.0); cLine(64.5, 33.5, 62, 38.8, 0.7); cLine(62, 38.8, 65.5, 39.2, 0.7)
+    cLine(56, 43, 72, 43, 1.6); cLine(56, 43, 54, 44.8, 1.2); cLine(72, 43, 74, 44.8, 1.2)
+    cLine(61, 48.6, 67, 48.6, 0.7)
+    # wraparound shades: solid black, one hard reflection line, a glint
+    paint(0.0); cPoly([(x + (x - 64) * 0.05, y + (1.4 if y > 25 else -1.4)) for x, y in SHADES])
+    SH2 = [(x + (x - 64) * 0.05, y + (1.4 if y > 25 else -1.4)) for x, y in SHADES]
+    paint(0.85 * fade)                                 # hard white rim so the shades read against the black
+    for i in range(len(SH2)): cLine(*SH2[i], *SH2[(i + 1) % len(SH2)], 0.55)
+    paint(1.0 * fade); cLine(38, 28.5, 90, 28.5, 0.6)
+    g = math.fmod(t * 0.6, 1.6)
+    if g < 1: paint(1.0); cLine(40 + g * 46, 19.5, 37 + g * 46, 30, 0.9)
+    # the single eye blazing through the lens
+    if eye > 0:
+        paint(0.3 + 0.35 * eye); cDisc(*EYE, 2 + 3.5 * eye)
+        paint(1.0); cDisc(*EYE, 0.8 + 1.4 * eye)
+    R.cam.update(s=1.0, x=64.0, y=64.0)
+
+def textMask(font):
+    img = Image.new('L', (W, W), 0); d = ImageDraw.Draw(img)
+    for s, y in (("BLASTEROID", L1Y), ("MEGASYNTH", L2Y)):
+        w = d.textlength(s, font=font); d.text(((W - w) / 2, y), s, font=font, fill=255)
+    return np.array(img) > 128
+
+class Film(F.Film):
     def __init__(s, seed):
-        s.r = random.Random(seed)
-        r = s.r
-        a = r.choice([SC_TIMES, SC_RINGS, SC_TUNNEL, SC_LISSA])
-        b = SC_PART if r.random() < 0.5 else r.choice([x for x in (SC_TIMES, SC_RINGS, SC_TUNNEL, SC_LISSA) if x != a])
-        s.scenes = [a, b]
-        s.k0 = r.uniform(2, 4); s.kv = r.uniform(0.25, 0.6)
-        s.sides = [r.randint(3, 8) for _ in range(5)]; s.rsp = [r.uniform(-1.2, 1.2) for _ in range(5)]
-        s.la, s.lb, s.lc = r.choice([1, 2, 3]), r.choice([2, 3, 4, 5]), r.choice([1, 3, 5])
-        s.P = [[r.uniform(0, 128), r.uniform(0, 128)] for _ in range(150)]
-        s.t = 0.0
-        s.omega = omegaPoints(150)
-
-    def step(s, dt):                                  # advance + draw one frame into R.G (persistent)
-        s.t += dt; u = s.t; r = s.r
-        decay = 0.5
-        if u < 6.0:
-            sc = s.scenes[0] if u < 3.0 else s.scenes[1]
-            decay = 0.86 if sc == SC_PART else 0.55
-        elif u < 7.4: decay = 0.8
-        else: decay = 0.6
-        R.G *= decay
+        super().__init__(seed)
+        s.face = outlinePoints(150)
+    def step(s, dt):
+        u = s.t + dt
+        if u < 6.0: return F.Film.step(s, dt)        # the generative scenes are unchanged
+        s.t = u
+        R.G *= 0.8 if u < 7.2 else 0.55
         R.cam.update(s=1.0, x=64.0, y=64.0, sx=0, sy=0); R.fx.update(lift=0.0, fade=1.0)
-        if u < 6.0:
-            lt = u if u < 3.0 else u - 3.0
-            fade = min(1.0, lt / 0.5)
-            [s.times, s.rings, s.particles, s.tunnel, s.lissa][sc](lt, fade, dt)
-            if 2.85 < u < 3.15: glitch(r)
-        elif u < 7.4:
-            s.converge((u - 6.0) / 1.4, dt)
+        if u < 7.2:                                   # everything flies into the head
+            k = (u - 6.0) / 1.2; e = 1 - (1 - min(1.0, k)) ** 3
+            if k > 0.6: drawHead((k - 0.6) / 0.4 * 0.7, 0, u)
+            for i, p in enumerate(s.P):
+                tx, ty = s.face[i % len(s.face)]
+                paint(1.0); cDisc(p[0] + (tx - p[0]) * e, p[1] + (ty - p[1]) * e, 0.7)
         else:
-            s.logo(u - 7.4)
+            k = u - 7.2
+            eye = min(1.0, k / 0.6) if k < 2.4 else 0.55 + 0.25 * math.sin(k * 5)
+            if k > 0.5 and k < 0.7: R.cam['sx'] = random.randint(-2, 2)
+            drawHead(min(1.0, 0.7 + k), eye, u)
+            s.hit = None
+            if 0.6 < k < 2.4:                         # the lasers
+                q = (k - 0.6) / 1.8
+                x1 = 8 + q * 112; x2 = 120 - q * 112
+                for hx, hy in ((x1, L1Y + 7), (x2, L2Y + 7)):
+                    paint(0.55); cLine(EYE_S[0], EYE_S[1], hx, hy, 3.2)
+                    paint(1.0); cLine(EYE_S[0], EYE_S[1], hx, hy, 1.3)
+                    paint(0.6); cDisc(hx, hy, 4); paint(1.0); cDisc(hx, hy, 1.6)
+                    for j in range(6):
+                        a = random.uniform(0, 2 * math.pi); rr = random.uniform(2, 9)
+                        paint(0.9); cDisc(hx + math.cos(a) * rr, hy + math.sin(a) * rr * 0.6, 0.5)
+                s.hit = (x1, x2)
+            # scorch glow under the burned letters
+            sx = np.arange(W)
+            for y0, rev in ((L1Y, False), (L2Y, True)):
+                band = np.exp(-((sx[:, None] - (y0 + 7)) / 7.0) ** 2) * 0.16
+                if s.hit and k < 2.4:
+                    lim = s.hit[1] if rev else s.hit[0]
+                    band = band * ((sx[None, :] > lim) if rev else (sx[None, :] < lim))
+                R.G[:, :] = np.maximum(R.G, band)
 
-    def times(s, t, fade, dt):
-        N = 72; k = s.k0 + s.kv * t; rot = t * 0.2
-        for i in range(N):
-            a1 = rot + i * 2 * math.pi / N; a2 = rot + i * k * 2 * math.pi / N
-            paint(0.62 * fade); cLine(64 + 54 * math.cos(a1), 64 + 54 * math.sin(a1), 64 + 54 * math.cos(a2), 64 + 54 * math.sin(a2), 0.5)
-        for i in range(0, N, 6):
-            a1 = rot + i * 2 * math.pi / N; paint(1.0 * fade); cDisc(64 + 54 * math.cos(a1), 64 + 54 * math.sin(a1), 0.8)
-
-    def rings(s, t, fade, dt):
-        for j in range(5):
-            rad = 12 + j * 11; n = s.sides[j]; rot = t * s.rsp[j] + j
-            pts = [(64 + rad * math.cos(rot + 2 * math.pi * i / n), 64 + rad * math.sin(rot + 2 * math.pi * i / n)) for i in range(n)]
-            if j == 0: paint(0.18 * fade); cPoly(pts)
-            for i in range(n):
-                paint((1.0 if j % 2 == 0 else 0.5) * fade); cLine(*pts[i], *pts[(i + 1) % n], 1.0 if j % 2 == 0 else 0.6)
-            ang = -t * s.rsp[j] * 2 + j * 1.7; paint(fade); cDisc(64 + rad * math.cos(ang), 64 + rad * math.sin(ang), 1.3)
-
-    def particles(s, t, fade, dt):
-        for p in s.P:
-            a = R.vnoise(np.array(p[0] * 0.025), np.array(p[1] * 0.025 + t * 0.15)) * 4 * math.pi
-            p[0] += math.cos(a) * 40 * dt; p[1] += math.sin(a) * 40 * dt
-            if not (0 <= p[0] < 128 and 0 <= p[1] < 128): p[0], p[1] = s.r.uniform(0, 128), s.r.uniform(0, 128)
-            paint(0.95 * fade); cDisc(p[0], p[1], 0.6)
-
-    def tunnel(s, t, fade, dt):
-        for i in range(12):
-            z = ((i - t * 2.2) % 12) + 0.6
-            size = 70 / z; rot = z * 0.35 + t * 0.6
-            pts = [(64 + size * math.cos(rot + math.pi / 4 + i2 * math.pi / 2), 64 + size * math.sin(rot + math.pi / 4 + i2 * math.pi / 2)) for i2 in range(4)]
-            g = min(1.0, 1.6 / z) * fade
-            for i2 in range(4): paint(g); cLine(*pts[i2], *pts[(i2 + 1) % 4], max(0.5, 2.5 / z))
-
-    def lissa(s, t, fade, dt):
-        prev = None; ry = t * 0.7; rx = 0.4 + 0.3 * math.sin(t * 0.5)
-        for i in range(181):
-            q = i / 180 * 2 * math.pi
-            x, y, z = math.sin(s.la * q + t * 0.3), math.sin(s.lb * q), math.sin(s.lc * q + 1.0)
-            x, z = x * math.cos(ry) + z * math.sin(ry), -x * math.sin(ry) + z * math.cos(ry)
-            y, z = y * math.cos(rx) - z * math.sin(rx), y * math.sin(rx) + z * math.cos(rx)
-            px, py = 64 + x * 46, 64 + y * 46
-            if prev: paint((0.45 + 0.5 * (z + 1) / 2) * fade); cLine(*prev, px, py, 0.6 + 0.8 * (z + 1) / 2)
-            prev = (px, py)
-
-    def converge(s, k, dt):
-        e = 1 - (1 - min(1.0, k)) ** 3
-        if k > 0.7: drawOmega((k - 0.7) / 0.3 * 0.6, outline=False)
-        for i, p in enumerate(s.P):
-            tx, ty = s.omega[i % len(s.omega)]
-            x = p[0] + (tx - p[0]) * e; y = p[1] + (ty - p[1]) * e
-            paint(1.0); cDisc(x, y, 0.7)
-
-    def logo(s, k):
-        sx = np.arange(W); d = np.hypot(sx[None, :] - 64, (sx[:, None] - 54))
-        pulse = 0.5 + 0.5 * math.sin(k * 2.2)
-        R.G[:, :] = np.maximum(R.G, (0.14 + 0.08 * pulse) * np.clip(1 - d / 52, 0, 1))
-        drawOmega(min(1.0, 0.6 + k * 0.8))
-        for i, p in enumerate(s.P[:40]):                          # a few motes orbit the symbol
-            a = k * 0.4 + i * 0.157; rr = 38 + 6 * math.sin(i * 1.7 + k)
-            paint(0.7); cDisc(64 + rr * math.cos(a), 52 + rr * 0.8 * math.sin(a), 0.5)
-        if 1.5 < k < 1.6 or 3.2 < k < 3.25: glitch(s.r)
-
-OX, OY, OR = 64, 50, 26
-FX_ = OR * math.cos(math.radians(50)); OFY = OY + OR * math.sin(math.radians(50))
-def omegaPoints(n):
-    pts = []; arc = int(n * 0.72)
-    for i in range(arc):
-        th = math.radians(-50 + 280 * i / (arc - 1)); pts.append((OX + OR * math.cos(th), OY - OR * math.sin(th)))
-    rest = n - arc
-    for i in range(rest):
-        u = i / max(1, rest // 2 - 1)
-        if i < rest // 2: pts.append((OX - FX_ - 14 * min(1, u), OFY))
-        else: pts.append((OX + FX_ + 14 * min(1, (i - rest // 2) / max(1, rest - rest // 2 - 1)), OFY))
-    return pts
-
-def drawOmega(fade, outline=True):
-    th = [math.radians(-50 + 280 * i / 28) for i in range(29)]
-    P = [(OX + OR * math.cos(a), OY - OR * math.sin(a)) for a in th]
-    if outline:
-        for i in range(28): paint(0.0); cLine(*P[i], *P[i + 1], 9)
-        paint(0.0); cLine(OX - FX_, OFY, OX - FX_ - 15, OFY, 8); cLine(OX + FX_, OFY, OX + FX_ + 15, OFY, 8)
-    for i in range(28):
-        w = 4.6 + 2.0 * abs(math.cos(th[i]))                    # thicker at the sides, like a real Omega
-        R.chrome(OY - OR - 3, 2 * OR + 8); R.fx['fade'] = fade; cLine(*P[i], *P[i + 1], w)
-    R.chrome(OFY - 6, 12); cLine(OX - FX_, OFY, OX - FX_ - 14, OFY, 5); cLine(OX + FX_, OFY, OX + FX_ + 14, OFY, 5)
-    R.fx['fade'] = 1.0
-
-def glitch(r):                                                    # horizontal tearing bands
-    for _ in range(4):
-        y0 = r.randrange(0, 120); h = r.randrange(2, 8); sh = r.randrange(-14, 15)
-        R.G[y0:y0 + h, :] = np.roll(R.G[y0:y0 + h, :], sh, axis=1)
-        if r.random() < 0.4: R.G[y0:y0 + 1, :] = np.maximum(R.G[y0:y0 + 1, :], 0.6)
-
+FONT = ImageFont.truetype("arialbd.ttf", 14)
+MASK = textMask(FONT)
 def render(film, u, fps=25):
     while film.t < u - 1e-6: film.step(1 / fps)
-    img = Image.fromarray((R.dither(int(u * 1000)) * 255).astype(np.uint8)).convert('1')
-    d = ImageDraw.Draw(img)
-    if u > 7.4 + 0.6:
-        d.text((46, 96), "O H M", fill=1)
+    bits = R.dither(int(u * 1000))
+    img = Image.fromarray((bits * 255).astype(np.uint8)).convert('1')
+    if u >= 7.8:                                      # burned-in text (crisp, revealed up to the laser hit)
+        k = u - 7.2; arr = np.array(img).astype(bool); m = MASK.copy()
+        if k < 2.4:
+            q = (k - 0.6) / 1.8; x1 = 8 + q * 112; x2 = 120 - q * 112
+            xs = np.arange(W)[None, :]; rows = np.arange(W)[:, None]
+            keep = ((rows < L2Y - 2) & (xs < x1)) | ((rows >= L2Y - 2) & (xs > x2))
+            m &= keep
+        outline = np.zeros_like(m)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1): outline |= np.roll(np.roll(m, dy, 0), dx, 1)
+        arr[outline] = False; arr[m] = True
+        img = Image.fromarray((arr * 255).astype(np.uint8)).convert('1')
     return img.resize((256, 256), Image.NEAREST)
 
 if __name__ == '__main__':
@@ -150,4 +137,3 @@ if __name__ == '__main__':
     out = Image.new('1', (len(frames) * 264, 256))
     for i, f in enumerate(frames): out.paste(f, (i * 264, 0))
     out.save('splash_preview.png')
-    print('scenes', film.scenes)
