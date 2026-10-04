@@ -1,0 +1,15 @@
+# Arduino / build output
+build/
+*.bin
+*.elf
+*.map
+# KiCad local state + backups
+*.kicad_prl
+*-backups/
+_autosave-*
+*.lck
+fp-info-cache
+# misc
+__pycache__/
+.DS_Store
+Thumbs.db

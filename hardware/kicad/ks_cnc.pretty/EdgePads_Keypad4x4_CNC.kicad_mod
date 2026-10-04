@@ -1,0 +1,160 @@
+(footprint "EdgePads_Keypad4x4_CNC"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Edge pads for a 4x4 tact keypad module (QYF-JP01 style, ~46 x 33 mm) with a RIGHT-ANGLE 1x8 header: R1 R2 R3 R4 C1 C2 C3 C4. The keypad hangs off the board edge (+Y), right side up, and its pins lie flat on these B.Cu pads. Keypad outline (F.Fab) estimated from a photo. Board edge 2.8 mm beyond the pad centres.")
+	(property "Reference" "REF**"
+		(at 8.89 -3.8 0)
+		(layer "F.SilkS")
+		(uuid "62a2ec96-ce54-491c-a0ea-76e99070eb11")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "EdgePads_Keypad4x4_CNC"
+		(at 8.89 5.8 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "027fa3af-0986-40ca-b44c-b15cb58e65c0")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "a55e99de-b508-48d6-8147-aecd6ab73d5c")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "11f1ac9d-3c9f-457e-996d-ab864f5a6896")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(sheetname "/")
+	(sheetfile "keypad_synth_revB.kicad_sch")
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_rect
+		(start -1.2 -2.6)
+		(end 18.98 2.2)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "f278881c-2906-41eb-8060-577ddf067549")
+	)
+	(fp_circle
+		(center -1.6 -2.6)
+		(end -1.45 -2.6)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "3f593e20-49f7-4a31-a972-ce1b1cbc326a")
+	)
+	(fp_rect
+		(start -1.3 -2.75)
+		(end 19.08 2.3)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "13b2168d-24a6-41c3-894c-7fd8fd659ee4")
+	)
+	(fp_rect
+		(start -13.3 5.8)
+		(end 32.7 38.8)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "2ef51fa8-5729-4309-bfe8-ac0a09846de2")
+	)
+	(fp_rect
+		(start -1.27 2.8)
+		(end 19.05 5.3)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "1566de97-4ce4-4ed1-8367-21328149d552")
+	)
+	(pad "1" smd rect
+		(at 0 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "f3da5238-c74f-44ae-ac6c-1e5af4526bf0")
+	)
+	(pad "2" smd rect
+		(at 2.54 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "7ed1eac8-3e62-4a31-bb98-7fea45339dd2")
+	)
+	(pad "3" smd rect
+		(at 5.08 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "30fbc368-b409-4dc1-9b89-5de82b7268f3")
+	)
+	(pad "4" smd rect
+		(at 7.62 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "09dc4eeb-affb-4e41-b92a-09c9dc879b2a")
+	)
+	(pad "5" smd rect
+		(at 10.16 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "c0c38ae6-4b61-4e50-ad1b-588f31e27c87")
+	)
+	(pad "6" smd rect
+		(at 12.7 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "10967e38-0b22-44c4-abc7-4ef2bce5b090")
+	)
+	(pad "7" smd rect
+		(at 15.24 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "0b36d965-0ab5-4071-85a9-d288b69f5dbb")
+	)
+	(pad "8" smd rect
+		(at 17.78 0)
+		(size 1.6 4.5)
+		(layers "B.Cu" "B.Mask")
+		(uuid "63ba25b0-b923-4f35-ab40-41d9738c717d")
+	)
+	(embedded_fonts no)
+)
